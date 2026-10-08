@@ -1,0 +1,33 @@
+<app-status-banners />
+
+@if (!auth.ready()) {
+  <div class="boot-splash" aria-label="Loading"><img src="icons/icon-192x192.png" width="96" height="96" alt="" /></div>
+} @else if (auth.user()) {
+  <header class="topbar">
+    <div class="brand">
+      <img src="icons/icon-96x96.png" width="32" height="32" alt="" />
+      <span>Parking</span>
+    </div>
+    <div class="topbar-actions">
+      <app-install-button />
+      <button type="button" class="icon-btn" aria-label="Sign out" (click)="confirmSignOut()">
+        @if (auth.avatarUrl(); as a) {
+          <img [src]="a" width="32" height="32" alt="" class="avatar" referrerpolicy="no-referrer" />
+        } @else {
+          <app-icon name="logout" />
+        }
+      </button>
+    </div>
+  </header>
+  <main class="content"><app-parking-page /></main>
+} @else {
+  <main class="content content-center">
+    @if (authView() === 'register') {
+      <app-register-page (login)="showLogin()" />
+    } @else {
+      <app-login-page (register)="showRegister()" />
+    }
+  </main>
+}
+
+<app-install-guide />
