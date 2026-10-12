@@ -1,7 +1,7 @@
 /** Tiny inline SVG icon set (no icon-font download → faster startup, works offline). */
 import { Component, input } from '@angular/core';
 
-export type IconName = 'share' | 'add-square' | 'check' | 'download' | 'wifi-off' | 'refresh' | 'close' | 'logout' | 'car' | 'more' | 'dock';
+export type IconName = 'share' | 'add-square' | 'check' | 'download' | 'wifi-off' | 'refresh' | 'close' | 'logout' | 'car' | 'more' | 'dock' | 'trash';
 
 const PATHS: Record<IconName, string> = {
   share: 'M12 3v12M12 3l-4 4M12 3l4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1',
@@ -15,6 +15,7 @@ const PATHS: Record<IconName, string> = {
   car: 'M5 16V11l2-5h10l2 5v5M3 16h18v3H3zM7.5 13h.01M16.5 13h.01',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   dock: 'M3 5h18v11H3zM7 20h10M12 16v4',
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3',
 };
 
 @Component({

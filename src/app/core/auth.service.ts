@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { AuthError, AuthRetryableFetchError, type Session, type User } from '@supabase/supabase-js';
 import { environment } from '../../environments/environment';
 import { normalizeUsername } from '../features/auth/auth-validators';
@@ -18,6 +18,13 @@ export class AuthService {
     return (u?.user_metadata?.['full_name'] as string) || (u?.user_metadata?.['name'] as string) || u?.email || '';
   });
   readonly avatarUrl = computed(() => (this.user()?.user_metadata?.['avatar_url'] as string) ?? null);
+  /** Stable across token refreshes (unlike user()), so the role isn't re-fetched every hour. */
+  private readonly userId = computed(() => this.user()?.id ?? null);
+  /**
+   * Only decides whether admin UI is shown. The real check is done by the database
+   * (is_admin() inside every admin RPC / RLS policy), so faking this flag grants nothing.
+   */
+  readonly isAdmin = signal(false);
 
   constructor() {
     this.supabase.auth.getSession().then(({ data }) => {
@@ -28,6 +35,19 @@ export class AuthService {
       this.session.set(session);
       this.ready.set(true);
     });
+
+    effect(() => {
+      const id = this.userId();
+      untracked(() => this.loadRoles(id));
+    });
+  }
+
+  private async loadRoles(userId: string | null) {
+    this.isAdmin.set(false);
+    if (!userId) return;
+    const { data, error } = await this.supabase.rpc('is_admin');
+    if (error) console.error(error);
+    if (this.userId() === userId) this.isAdmin.set(data === true); // ignore a stale answer after switching users
   }
 
   /**

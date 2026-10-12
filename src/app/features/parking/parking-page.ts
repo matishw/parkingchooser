@@ -2,11 +2,13 @@ import { Component, computed, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { ParkingService, SpaceView } from '../../core/parking.service';
 import { NetworkService } from '../../core/network.service';
+import { AuthService } from '../../core/auth.service';
+import { AdminSpaces } from '../admin/admin-spaces';
 import { Icon } from '../../shared/icons';
 
 @Component({
   selector: 'app-parking-page',
-  imports: [DatePipe, Icon],
+  imports: [DatePipe, Icon, AdminSpaces],
   template: `
     <section class="summary">
       <div>
@@ -66,11 +68,16 @@ import { Icon } from '../../shared/icons';
     @if (parking.lastUpdated() && network.online()) {
       <p class="muted small center">Live · updated {{ parking.lastUpdated() | date: 'HH:mm:ss' }}</p>
     }
+
+    @if (auth.isAdmin()) {
+      <app-admin-spaces />
+    }
   `,
 })
 export class ParkingPage {
   protected readonly parking = inject(ParkingService);
   protected readonly network = inject(NetworkService);
+  protected readonly auth = inject(AuthService);
   protected readonly spaces = computed(() => (this.network.online() ? this.parking.view() : []));
 
   onTap(s: SpaceView) {

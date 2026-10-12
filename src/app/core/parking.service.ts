@@ -51,6 +51,8 @@ export class ParkingService {
   readonly error = signal<string | null>(null);
   readonly busySpaceId = signal<number | null>(null);
   readonly lastUpdated = signal<Date | null>(null);
+  readonly addingSpace = signal(false);
+  readonly removingSpaceId = signal<number | null>(null);
 
   readonly view = computed<SpaceView[]>(() => {
     const me = this.auth.user()?.id;
@@ -174,11 +176,68 @@ export class ParkingService {
     }
   }
 
+  /**
+   * Admin only — the database function re-checks the role and validates, so this can't be bypassed.
+   * Returns an error message, or null on success.
+   */
+  async addSpace(label: string): Promise<string | null> {
+    const value = label.trim();
+    if (!value) return 'Enter a parking space number or name.';
+    if (value.length > 20) return 'Use 20 characters or fewer.';
+    if (this.spaces().some((s) => s.label.trim().toLowerCase() === value.toLowerCase())) {
+      return `Parking space ${value} already exists.`;
+    }
+    if (!this.network.online()) return OFFLINE_MESSAGE;
+    this.addingSpace.set(true);
+    try {
+      const { error } = await this.supabase.rpc('admin_add_parking_space', { p_label: value });
+      if (error) {
+        // Validation / permission messages raised by the function are written for the user.
+        if (['23505', '22023', '42501'].includes(error.code)) return error.message;
+        throw error;
+      }
+      await this.refresh();
+      return null;
+    } catch (e) {
+      if (!navigator.onLine) return OFFLINE_MESSAGE;
+      console.error(e);
+      return 'Could not add the parking space. Please try again.';
+    } finally {
+      this.addingSpace.set(false);
+    }
+  }
+
+  /**
+   * Admin only — admin_remove_parking_space() re-checks the role. Also cancels today's/future
+   * bookings on the space. Returns an error message, or null on success.
+   */
+  async removeSpace(space: ParkingSpace): Promise<string | null> {
+    if (!this.network.online()) return OFFLINE_MESSAGE;
+    if (this.removingSpaceId() !== null) return null;
+    this.removingSpaceId.set(space.id);
+    try {
+      const { error } = await this.supabase.rpc('admin_remove_parking_space', { p_space_id: space.id });
+      if (error) {
+        if (['P0002', '42501'].includes(error.code)) return error.message;
+        throw error;
+      }
+      return null;
+    } catch (e) {
+      if (!navigator.onLine) return OFFLINE_MESSAGE;
+      console.error(e);
+      return `Could not remove ${space.label}. Please try again.`;
+    } finally {
+      this.removingSpaceId.set(null);
+      await this.refresh(); // in sync with the DB whether it worked or not (e.g. someone else removed it)
+    }
+  }
+
   private subscribe() {
     if (this.channel) return;
     this.channel = this.supabase
       .channel('reservations-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => this.refresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'parking_spaces' }, () => this.refresh())
       .subscribe((status) => {
         // Re-fetch after (re)joining so nothing missed while disconnected is lost.
         if (status === 'SUBSCRIBED') this.refresh();

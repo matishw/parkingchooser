@@ -4,10 +4,10 @@ import { PwaInstallService } from './core/pwa-install.service';
 import { LoginPage } from './features/auth/login-page';
 import { RegisterPage } from './features/auth/register-page';
 import { ParkingPage } from './features/parking/parking-page';
+import { Icon } from './shared/icons';
 import { InstallButton } from './shared/install-button';
 import { InstallGuide } from './shared/install-guide';
 import { StatusBanners } from './shared/status-banners';
-import { Icon } from './shared/icons';
 
 @Component({
   selector: 'app-root',

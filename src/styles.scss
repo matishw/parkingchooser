@@ -249,3 +249,26 @@ app-status-banners:has(.banner) + .topbar { padding-top: 8px; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes bob { 50% { transform: translateY(4px); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- Admin ---------- */
+.admin-card {
+  display: grid; gap: 10px; margin-top: 24px; padding: 18px 16px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  .eyebrow { margin: 0; color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+}
+.admin-add {
+  display: flex; gap: 10px; align-items: stretch;
+  .field { flex: 1; min-width: 0; }
+  .btn { min-height: 48px; }
+}
+.admin-list {
+  list-style: none; margin: 4px 0 0; padding: 0;
+  height: 320px; overflow-y: auto; overscroll-behavior: contain; /* ~6 rows, then scroll */
+  border-bottom: 1px solid var(--line);
+  li {
+    display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 2px 0 2px 4px;
+    border-top: 1px solid var(--line);
+  }
+  .admin-list-label { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+}
+.icon-btn-danger { color: var(--danger); }
