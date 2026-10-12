@@ -18,6 +18,7 @@ import { Icon } from '../../shared/icons';
           @else if (!parking.loaded()) { Loading… }
           @else { {{ parking.freeCount() }} of {{ parking.view().length }} free }
         </h1>
+        <p class="reset-note muted small"><app-icon name="refresh" [size]="14" /> Resets every day at {{ resetTime }}</p>
         @if (network.online() && parking.myReservation(); as mine) {
           <p class="mine-pill"><app-icon name="car" [size]="18" /> You have <strong>{{ mine.label }}</strong> today
             <span class="small">· booked {{ mine.reservation?.created_at | date: 'd MMM, HH:mm' }}</span></p>
@@ -78,6 +79,8 @@ export class ParkingPage {
   protected readonly parking = inject(ParkingService);
   protected readonly network = inject(NetworkService);
   protected readonly auth = inject(AuthService);
+  /** The daily reset runs at 20:00 UTC (pg_cron, see schema.sql); shown in the user's local time too. */
+  protected readonly resetTime = resetTimeLabel();
   protected readonly spaces = computed(() => (this.network.online() ? this.parking.view() : []));
 
   onTap(s: SpaceView) {
@@ -89,4 +92,11 @@ export class ParkingPage {
   ariaLabel(s: SpaceView) {
     return s.state === 'free' ? `${s.label}, free. Reserve` : s.state === 'mine' ? `${s.label}, reserved by you. Release` : `${s.label}, taken by ${s.reservation?.user_name}`;
   }
+}
+
+/** "23:00 (20:00 UTC)" — or just "20:00 UTC" when the device is already on UTC. */
+function resetTimeLabel(now = new Date()): string {
+  const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 20));
+  const local = reset.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  return reset.getTimezoneOffset() === 0 ? '20:00 UTC' : `${local} (20:00 UTC)`;
 }
