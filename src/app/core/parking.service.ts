@@ -3,10 +3,14 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { SupabaseService } from './supabase.service';
 import { AuthService } from './auth.service';
 import { NetworkService } from './network.service';
+import { formatDateRange, isAvailableOn, isDateBased, rangesOverlap, validateDateRange } from './parking-dates';
 
 export interface ParkingSpace {
   id: number;
   label: string;
+  /** Date-based spaces only ('YYYY-MM-DD', inclusive); null for permanent spaces. See parking-dates.ts. */
+  available_from: string | null;
+  available_until: string | null;
 }
 
 export interface Reservation {
@@ -52,12 +56,22 @@ export class ParkingService {
   readonly busySpaceId = signal<number | null>(null);
   readonly lastUpdated = signal<Date | null>(null);
   readonly addingSpace = signal(false);
+  readonly addingDatedSpace = signal(false);
   readonly removingSpaceId = signal<number | null>(null);
+
+  /** Spaces open on the selected day: every permanent space plus date-based ones whose range includes it. */
+  private readonly daySpaces = computed(() => this.spaces().filter((s) => isAvailableOn(s, this.date())));
+  /** Date-based spaces that haven't ended yet (current and upcoming), soonest first — for the admin list. */
+  readonly datedSpaces = computed(() =>
+    this.spaces()
+      .filter(isDateBased)
+      .sort((a, b) => a.available_from!.localeCompare(b.available_from!) || a.label.localeCompare(b.label)),
+  );
 
   readonly view = computed<SpaceView[]>(() => {
     const me = this.auth.user()?.id;
     const byspace = new Map(this.reservations().map((r) => [r.space_id, r]));
-    return this.spaces().map((s) => {
+    return this.daySpaces().map((s) => {
       const r = byspace.get(s.id) ?? null;
       return { ...s, reservation: r, state: !r ? 'free' : r.user_id === me ? 'mine' : 'taken' };
     });
@@ -104,7 +118,13 @@ export class ParkingService {
     this.error.set(null);
     try {
       const [spaces, res] = await Promise.all([
-        this.supabase.from('parking_spaces').select('id,label').eq('active', true).order('sort_order'),
+        // Permanent spaces plus date-based ones that haven't ended; daySpaces narrows them to the selected day.
+        this.supabase
+          .from('parking_spaces')
+          .select('id,label,available_from,available_until')
+          .eq('active', true)
+          .or(`available_until.is.null,available_until.gte.${this.date()}`)
+          .order('sort_order'),
         this.supabase
           .from('reservations')
           .select('id,space_id,reserved_for,user_id,user_name,user_avatar_url,created_at')
@@ -184,8 +204,10 @@ export class ParkingService {
     const value = label.trim();
     if (!value) return 'Enter a parking space number or name.';
     if (value.length > 20) return 'Use 20 characters or fewer.';
-    if (this.spaces().some((s) => s.label.trim().toLowerCase() === value.toLowerCase())) {
-      return `Parking space ${value} already exists.`;
+    const same = this.spacesLabelled(value);
+    if (same.some((s) => !isDateBased(s))) return `Parking space ${value} already exists.`;
+    if (same.length) {
+      return `Parking space ${value} is already scheduled for specific dates. Remove it from the date-based list first.`;
     }
     if (!this.network.online()) return OFFLINE_MESSAGE;
     this.addingSpace.set(true);
@@ -204,6 +226,46 @@ export class ParkingService {
       return 'Could not add the parking space. Please try again.';
     } finally {
       this.addingSpace.set(false);
+    }
+  }
+
+  /**
+   * Admin only — adds a space available only from `from` through `until` (inclusive, 'YYYY-MM-DD').
+   * admin_add_dated_parking_space() re-checks the role and every rule here. Returns an error message, or null.
+   */
+  async addDatedSpace(label: string, from: string, until: string): Promise<string | null> {
+    const value = label.trim();
+    if (!value) return 'Enter a parking space number or name.';
+    if (value.length > 20) return 'Use 20 characters or fewer.';
+    const rangeError = validateDateRange(from, until, todayIso());
+    if (rangeError) return rangeError;
+    const same = this.spacesLabelled(value);
+    if (same.some((s) => !isDateBased(s))) return `Parking space ${value} already exists as a permanent space.`;
+    const clash = same.find((s) => rangesOverlap(s.available_from!, s.available_until!, from, until));
+    if (clash) {
+      const range = formatDateRange(clash.available_from!, clash.available_until!);
+      return `Parking space ${clash.label} is already available ${range} (overlaps the dates you chose).`;
+    }
+    if (!this.network.online()) return OFFLINE_MESSAGE;
+    this.addingDatedSpace.set(true);
+    try {
+      const { error } = await this.supabase.rpc('admin_add_dated_parking_space', {
+        p_label: value,
+        p_from: from,
+        p_until: until,
+      });
+      if (error) {
+        if (['23505', '22023', '42501'].includes(error.code)) return error.message;
+        throw error;
+      }
+      await this.refresh();
+      return null;
+    } catch (e) {
+      if (!navigator.onLine) return OFFLINE_MESSAGE;
+      console.error(e);
+      return 'Could not add the parking space. Please try again.';
+    } finally {
+      this.addingDatedSpace.set(false);
     }
   }
 
@@ -230,6 +292,12 @@ export class ParkingService {
       this.removingSpaceId.set(null);
       await this.refresh(); // in sync with the DB whether it worked or not (e.g. someone else removed it)
     }
+  }
+
+  /** Loaded spaces with this label, ignoring case and surrounding spaces (like the database). */
+  private spacesLabelled(label: string) {
+    const l = label.trim().toLowerCase();
+    return this.spaces().filter((s) => s.label.trim().toLowerCase() === l);
   }
 
   private subscribe() {

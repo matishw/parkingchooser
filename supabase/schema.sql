@@ -8,6 +8,17 @@ create table if not exists public.parking_spaces (
   active      boolean not null default true
 );
 
+-- Date-based spaces: available only from available_from through available_until (both inclusive).
+-- Both null = a permanent space. Plain `date` columns (no time, no timezone): they are compared only with
+-- reservations.reserved_for, which is also a `date` — the calendar day the app is booking for.
+alter table public.parking_spaces add column if not exists available_from  date;
+alter table public.parking_spaces add column if not exists available_until date;
+do $$ begin
+  alter table public.parking_spaces add constraint parking_spaces_dates_valid check (
+    (available_from is null and available_until is null)
+    or (available_from is not null and available_until is not null and available_until >= available_from));
+exception when duplicate_object then null; end $$;
+
 create table if not exists public.reservations (
   id                uuid primary key default gen_random_uuid(),
   space_id          smallint not null references public.parking_spaces(id) on delete cascade,
@@ -32,11 +43,22 @@ drop policy if exists "reservations readable" on public.reservations;
 create policy "reservations readable" on public.reservations
   for select to authenticated using (true);
 
--- Users can only create / cancel their own reservations, and not in the past.
+-- True when the space can be booked on that day: it is active and, if date-based, the day is in its range.
+create or replace function public.space_open_on(p_space_id smallint, p_day date)
+returns boolean language sql stable security definer set search_path = ''
+as $$
+  select exists (select 1 from public.parking_spaces s
+                 where s.id = p_space_id and s.active
+                   and (s.available_from is null or p_day between s.available_from and s.available_until))
+$$;
+revoke all on function public.space_open_on(smallint, date) from public, anon;
+grant execute on function public.space_open_on(smallint, date) to authenticated;
+
+-- Users can only create / cancel their own reservations, not in the past, and only on a space open that day.
 drop policy if exists "reserve for self" on public.reservations;
 create policy "reserve for self" on public.reservations
   for insert to authenticated
-  with check (user_id = auth.uid() and reserved_for >= current_date);
+  with check (user_id = auth.uid() and reserved_for >= current_date and public.space_open_on(space_id, reserved_for));
 
 drop policy if exists "cancel own" on public.reservations;
 create policy "cancel own" on public.reservations
@@ -48,11 +70,12 @@ do $$ begin
   alter publication supabase_realtime add table public.reservations;
 exception when duplicate_object then null; end $$;
 
--- Sample spaces — edit to match your lot.
+-- Default spaces — keep in sync with default_parking_labels() (the daily reset restores exactly these).
+-- No conflict target: skips rows whose id or label already exists, so re-running is safe.
 insert into public.parking_spaces (id, label, sort_order) values
-  (1, 'P1', 1), (2, 'P2', 2), (3, 'P3', 3), (4, 'P4', 4),
-  (5, 'P5', 5), (6, 'P6', 6), (7, 'P7', 7), (8, 'P8', 8)
-on conflict (id) do nothing;
+  (1, '126', 1), (2, '127', 2), (3, '155', 3),
+  (4, '212', 4), (5, '217', 5), (6, '239', 6)
+on conflict do nothing;
 
 -- ============================================================================
 -- Roles / admin (safe to re-run)
@@ -150,8 +173,11 @@ end $$;
 select setval(pg_get_serial_sequence('public.parking_spaces', 'id'),
               coalesce((select max(id) from public.parking_spaces), 0) + 1, false);
 
--- No duplicates, ignoring case and surrounding spaces ("p9 " = "P9").
-create unique index if not exists parking_spaces_label_unique on public.parking_spaces (lower(btrim(label)));
+-- No duplicate permanent spaces, ignoring case and surrounding spaces ("p9 " = "P9"). Date-based spaces may
+-- reuse a label for different date ranges; their overlaps are blocked by parking_spaces_dated_no_overlap.
+drop index if exists public.parking_spaces_label_unique;
+create unique index if not exists parking_spaces_permanent_label_unique
+  on public.parking_spaces (lower(btrim(label))) where available_from is null;
 
 -- Admins may also write the table directly (e.g. future edit/disable features). Regular users can't.
 drop policy if exists "admins manage spaces" on public.parking_spaces;
@@ -177,7 +203,15 @@ begin
     raise exception 'Use 20 characters or fewer.' using errcode = '22023';
   end if;
 
-  select * into v_space from public.parking_spaces where lower(btrim(label)) = lower(v_label) for update;
+  if exists (select 1 from public.parking_spaces
+             where active and available_from is not null and available_until >= current_date
+               and lower(btrim(label)) = lower(v_label)) then
+    raise exception 'Parking space % is already scheduled for specific dates. Remove it from the date-based list first.', v_label
+      using errcode = '23505';
+  end if;
+
+  select * into v_space from public.parking_spaces
+  where lower(btrim(label)) = lower(v_label) and available_from is null for update;
   if found then
     if v_space.active then
       raise exception 'Parking space % already exists.', v_space.label using errcode = '23505';
@@ -186,12 +220,15 @@ begin
     return v_space;
   end if;
 
-  insert into public.parking_spaces (label, sort_order)
-  values (v_label, coalesce((select max(sort_order) from public.parking_spaces), 0) + 1)
-  returning * into v_space;
+  -- Only the insert can race with another admin; messages raised above pass through unchanged.
+  begin
+    insert into public.parking_spaces (label, sort_order)
+    values (v_label, coalesce((select max(sort_order) from public.parking_spaces), 0) + 1)
+    returning * into v_space;
+  exception when unique_violation then
+    raise exception 'Parking space % already exists.', v_label using errcode = '23505';
+  end;
   return v_space;
-exception when unique_violation then
-  raise exception 'Parking space % already exists.', v_label using errcode = '23505';
 end $$;
 revoke all on function public.admin_add_parking_space(text) from public, anon;
 grant execute on function public.admin_add_parking_space(text) to authenticated;
@@ -228,13 +265,88 @@ revoke all on function public.admin_remove_parking_space(smallint) from public, 
 grant execute on function public.admin_remove_parking_space(smallint) to authenticated;
 
 -- ============================================================================
+-- Admin: date-based parking spaces (safe to re-run)
+-- A date-based space is a parking_spaces row with available_from / available_until set. It shows up and can
+-- be booked only on days in that range (inclusive). Removing one uses admin_remove_parking_space() above.
+-- ============================================================================
+
+-- The spaces the daily reset always restores. Date-based spaces can't use these labels.
+create or replace function public.default_parking_labels()
+returns text[] language sql immutable set search_path = ''
+as $$ select array['126', '127', '155', '212', '217', '239'] $$;
+revoke all on function public.default_parking_labels() from public, anon, authenticated;
+
+-- The same label can't be active for two overlapping date ranges (so it never appears twice on one day),
+-- even with direct table writes or two admins adding at once.
+create extension if not exists btree_gist with schema extensions;
+do $$ begin
+  alter table public.parking_spaces add constraint parking_spaces_dated_no_overlap
+    exclude using gist (lower(btrim(label)) with =, daterange(available_from, available_until, '[]') with &&)
+    where (active and available_from is not null);
+exception when duplicate_object or duplicate_table then null; end $$;
+
+create or replace function public.admin_add_dated_parking_space(p_label text, p_from date, p_until date)
+returns public.parking_spaces language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_label text := btrim(coalesce(p_label, ''));
+  v_space public.parking_spaces;
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can add parking spaces.' using errcode = '42501';
+  end if;
+  if v_label = '' then
+    raise exception 'Enter a parking space number or name.' using errcode = '22023';
+  end if;
+  if char_length(v_label) > 20 then
+    raise exception 'Use 20 characters or fewer.' using errcode = '22023';
+  end if;
+  if p_from is null or p_until is null then
+    raise exception 'Choose a start date and an end date.' using errcode = '22023';
+  end if;
+  if p_until < p_from then
+    raise exception 'The end date can''t be earlier than the start date.' using errcode = '22023';
+  end if;
+  if p_until - p_from > 365 then
+    raise exception 'A date range can be at most one year long.' using errcode = '22023';
+  end if;
+  if lower(v_label) = any (public.default_parking_labels()) then
+    raise exception 'Parking space % is a default space and is already available every day.', v_label using errcode = '23505';
+  end if;
+  if exists (select 1 from public.parking_spaces
+             where active and available_from is null and lower(btrim(label)) = lower(v_label)) then
+    raise exception 'Parking space % already exists as a permanent space.', v_label using errcode = '23505';
+  end if;
+
+  select * into v_space from public.parking_spaces
+  where active and available_from is not null and lower(btrim(label)) = lower(v_label)
+    and daterange(available_from, available_until, '[]') && daterange(p_from, p_until, '[]')
+  order by available_from limit 1;
+  if found then
+    raise exception 'Parking space % is already available %–% (overlaps the dates you chose).', v_space.label,
+      to_char(v_space.available_from, 'FMDD Mon YYYY'), to_char(v_space.available_until, 'FMDD Mon YYYY')
+      using errcode = '23505';
+  end if;
+
+  insert into public.parking_spaces (label, sort_order, available_from, available_until)
+  values (v_label, coalesce((select max(sort_order) from public.parking_spaces), 0) + 1, p_from, p_until)
+  returning * into v_space;
+  return v_space;
+exception when exclusion_violation then
+  raise exception 'Parking space % is already available on some of these dates.', v_label using errcode = '23505';
+end $$;
+revoke all on function public.admin_add_dated_parking_space(text, date, date) from public, anon;
+grant execute on function public.admin_add_dated_parking_space(text, date, date) to authenticated;
+
+-- ============================================================================
 -- Daily reset at 20:00 UTC (pg_cron) — safe to re-run
 -- ============================================================================
 
 -- Resets the lot to exactly the listed spaces, all free:
 --   * listed spaces are created or re-activated (matched by label, ignoring case/spaces) and ordered as listed;
---   * every other space is soft-deleted (active = false), like an admin "Remove" — rows are kept so
+--   * every other permanent space is soft-deleted (active = false), like an admin "Remove" — rows are kept so
 --     reservation history stays intact;
+--   * date-based spaces are left untouched: they stay available on exactly the days in their range;
 --   * reservations from today (UTC) onward are deleted so every space can be booked again; past days are kept.
 -- Idempotent: the unique label index prevents duplicates, and a transaction-scoped advisory lock stops
 -- two runs (e.g. cron + a manual run) from interleaving. Returns a summary that pg_cron logs.
@@ -242,26 +354,31 @@ create or replace function public.daily_parking_reset()
 returns jsonb language plpgsql security definer set search_path = ''
 as $$
 declare
-  v_labels constant text[] := array['126', '127', '155', '212', '217', '239'];
+  v_labels constant text[] := public.default_parking_labels();
   v_deactivated int;
   v_cancelled int;
+  v_dated int;
 begin
   perform pg_advisory_xact_lock(hashtext('public.daily_parking_reset'));
 
   insert into public.parking_spaces (label, sort_order, active)
   select l.label, l.pos, true
   from unnest(v_labels) with ordinality as l(label, pos)
-  on conflict ((lower(btrim(label)))) do update
+  on conflict ((lower(btrim(label)))) where available_from is null do update
     set active = true, sort_order = excluded.sort_order;
 
   update public.parking_spaces set active = false
-  where active and lower(btrim(label)) <> all (v_labels);
+  where active and available_from is null and lower(btrim(label)) <> all (v_labels);
   get diagnostics v_deactivated = row_count;
 
   delete from public.reservations where reserved_for >= current_date;
   get diagnostics v_cancelled = row_count;
 
-  return jsonb_build_object('spaces', v_labels, 'deactivated', v_deactivated, 'reservations_cleared', v_cancelled);
+  select count(*) into v_dated from public.parking_spaces
+  where active and available_from is not null and available_until >= current_date;
+
+  return jsonb_build_object('spaces', v_labels, 'deactivated', v_deactivated, 'reservations_cleared', v_cancelled,
+                            'date_based_spaces_kept', v_dated);
 end $$;
 -- Server-only: not callable from the app (run it manually from the SQL editor if needed).
 revoke all on function public.daily_parking_reset() from public, anon, authenticated;

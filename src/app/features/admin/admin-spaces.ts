@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { ParkingService, SpaceView } from '../../core/parking.service';
 import { NetworkService } from '../../core/network.service';
+import { isDateBased } from '../../core/parking-dates';
 import { Icon } from '../../shared/icons';
 
 /** Admin-only card for adding / removing parking spaces. Shown only to admins; the database enforces the role. */
@@ -29,7 +30,7 @@ import { Icon } from '../../shared/icons';
       }
 
       @if (query()) {
-        <small class="muted" aria-live="polite">{{ filtered().length }} of {{ parking.view().length }} spaces</small>
+        <small class="muted" aria-live="polite">{{ filtered().length }} of {{ permanent().length }} spaces</small>
       }
 
       <ul id="admin-spaces-list" class="admin-list" [attr.aria-busy]="parking.removingSpaceId() !== null">
@@ -58,9 +59,11 @@ export class AdminSpaces {
   protected readonly label = signal('');
   /** The input doubles as a search box: the list shows spaces whose label contains the text. */
   protected readonly query = computed(() => this.label().trim().toLowerCase());
+  /** Date-based spaces are managed in their own card (admin-dated-spaces.ts). */
+  protected readonly permanent = computed(() => this.parking.view().filter((s) => !isDateBased(s)));
   protected readonly filtered = computed(() => {
     const q = this.query();
-    const all = this.parking.view();
+    const all = this.permanent();
     return q ? all.filter((s) => s.label.toLowerCase().includes(q)) : all;
   });
   protected readonly notice = signal<{ ok: boolean; text: string } | null>(null);

@@ -4,11 +4,12 @@ import { ParkingService, SpaceView } from '../../core/parking.service';
 import { NetworkService } from '../../core/network.service';
 import { AuthService } from '../../core/auth.service';
 import { AdminSpaces } from '../admin/admin-spaces';
+import { AdminDatedSpaces } from '../admin/admin-dated-spaces';
 import { Icon } from '../../shared/icons';
 
 @Component({
   selector: 'app-parking-page',
-  imports: [DatePipe, Icon, AdminSpaces],
+  imports: [DatePipe, Icon, AdminSpaces, AdminDatedSpaces],
   template: `
     <section class="summary">
       <div>
@@ -72,6 +73,7 @@ import { Icon } from '../../shared/icons';
 
     @if (auth.isAdmin()) {
       <app-admin-spaces />
+      <app-admin-dated-spaces />
     }
   `,
 })

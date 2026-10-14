@@ -273,3 +273,11 @@ app-status-banners:has(.banner) + .topbar { padding-top: 8px; }
   .admin-list-label { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
 }
 .icon-btn-danger { color: var(--danger); }
+.admin-dated-form {
+  display: grid; gap: 10px;
+  .btn { min-height: 48px; }
+}
+.admin-dated-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 359px) { .admin-dated-dates { grid-template-columns: 1fr; } }
+.admin-dated-list { height: auto; max-height: 320px; }
+.admin-dated-range { display: block; font-weight: 400; }
