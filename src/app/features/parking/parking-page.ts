@@ -12,7 +12,7 @@ import { Icon } from '../../shared/icons';
   imports: [DatePipe, Icon, AdminSpaces, AdminDatedSpaces],
   template: `
     <section class="summary">
-      <div>
+      <div class="summary-main">
         <p class="eyebrow">{{ parking.date() | date: 'EEEE, d MMM' }}</p>
         <h1>
           @if (!network.online()) { Offline }
@@ -20,16 +20,23 @@ import { Icon } from '../../shared/icons';
           @else { {{ parking.freeCount() }} of {{ parking.view().length }} free }
         </h1>
         <p class="reset-note muted small"><app-icon name="refresh" [size]="14" /> Resets every day at {{ resetTime }}</p>
-        @if (network.online() && parking.myReservation(); as mine) {
-          <p class="mine-pill"><app-icon name="car" [size]="18" /> You have <strong>{{ mine.label }}</strong> today
-            <span class="small">· booked {{ mine.reservation?.created_at | date: 'd MMM, HH:mm' }}</span></p>
-        }
       </div>
       <button type="button" class="icon-btn" aria-label="Refresh availability"
               [disabled]="!network.online() || parking.loading()" (click)="parking.refresh()">
         <span [class.spin]="parking.loading()"><app-icon name="refresh" /></span>
       </button>
     </section>
+
+    @if (network.online() && parking.myReservation(); as mine) {
+      <div class="mine-pill">
+        <span class="mine-pill-icon"><app-icon name="car" [size]="20" /></span>
+        <span class="mine-pill-text">
+          <span>Your spot today</span>
+          <span class="small">Booked {{ mine.reservation?.created_at | date: 'd MMM, HH:mm' }}</span>
+        </span>
+        <strong class="mine-pill-label">{{ mine.label }}</strong>
+      </div>
+    }
 
     @if (parking.error(); as err) {
       <p class="error" role="alert">{{ err }}</p>
