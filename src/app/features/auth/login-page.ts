@@ -3,10 +3,11 @@ import { AuthService } from '../../core/auth.service';
 import { GoogleAuthService, GoogleCredential } from '../../core/google-auth.service';
 import { NetworkService } from '../../core/network.service';
 import { InstallButton } from '../../shared/install-button';
+import { TermsLink } from '../../shared/terms';
 
 @Component({
   selector: 'app-login-page',
-  imports: [InstallButton],
+  imports: [InstallButton, TermsLink],
   template: `
     <section class="login">
       <img src="icons/icon-192x192.png" width="88" height="88" alt="" class="login-logo" />
@@ -45,6 +46,7 @@ import { InstallButton } from '../../shared/install-button';
       @if (error() || google.loadError(); as err) { <p class="error" role="alert">{{ err }}</p> }
 
       <p class="muted switch-auth">New here? <button type="button" class="link-btn" (click)="register.emit()">Create account</button></p>
+      <p class="muted small terms-note">By signing in you agree to the <app-terms-link />.</p>
     </section>
   `,
 })

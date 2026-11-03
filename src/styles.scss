@@ -37,9 +37,12 @@
 html, body {
   margin: 0;
   max-width: 100%;
-  overflow-x: hidden;               /* no accidental horizontal scroll */
-  overscroll-behavior-y: none;      /* no rubber-band reveal behind the standalone app */
+  /* No accidental horizontal scroll. `clip` (unlike `hidden`) doesn't turn <body> into a nested scroll
+     container, so the page keeps scrolling on the viewport — smooth touch scrolling and working sticky header. */
+  overflow-x: hidden;
+  @supports (overflow-x: clip) { overflow-x: clip; }
 }
+html { overscroll-behavior-y: none; } /* no rubber-band reveal behind the standalone app */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   min-height: 100dvh;
@@ -266,6 +269,18 @@ app-status-banners:has(.banner) + .topbar { padding-top: 8px; }
   color: var(--muted); font-size: .85rem;
   &::after { content: '↓'; font-size: 1.2rem; animation: bob 1.2s ease-in-out infinite; }
 }
+/* ---------- Terms & Privacy ---------- */
+.terms-note { margin: 16px 0 0; .link-btn { padding: 2px; font-size: inherit; } }
+.auth-form .terms-note { margin: 0; text-align: center; }
+.terms {
+  .terms-head { grid-template-columns: 1fr auto; margin-bottom: 4px; }
+  h3 { margin: 18px 0 6px; font-size: 1rem; }
+  p, li { font-size: .92rem; line-height: 1.5; }
+  p { margin: 0; }
+  ul { margin: 0; padding-inline-start: 20px; display: grid; gap: 4px; }
+  > .small { margin: 20px 0 12px; }
+}
+
 @keyframes slide-up { from { transform: translateY(100%); } }
 @keyframes fade { from { opacity: 0; } }
 @keyframes bob { 50% { transform: translateY(4px); } }
@@ -284,7 +299,8 @@ app-status-banners:has(.banner) + .topbar { padding-top: 8px; }
 }
 .admin-list {
   list-style: none; margin: 4px 0 0; padding: 0;
-  height: 320px; overflow-y: auto; overscroll-behavior: contain; /* ~6 rows, then scroll */
+  /* ~6 rows, then scroll; at the list's ends the swipe continues to the page instead of getting stuck. */
+  max-height: 320px; overflow-y: auto; overscroll-behavior: auto; -webkit-overflow-scrolling: touch;
   border-bottom: 1px solid var(--line);
   li {
     display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 2px 0 2px 4px;

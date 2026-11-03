@@ -8,10 +8,11 @@ import { Icon } from './shared/icons';
 import { InstallButton } from './shared/install-button';
 import { InstallGuide } from './shared/install-guide';
 import { StatusBanners } from './shared/status-banners';
+import { TermsSheet } from './shared/terms';
 
 @Component({
   selector: 'app-root',
-  imports: [LoginPage, RegisterPage, ParkingPage, InstallButton, InstallGuide, StatusBanners, Icon],
+  imports: [LoginPage, RegisterPage, ParkingPage, InstallButton, InstallGuide, StatusBanners, TermsSheet, Icon],
   templateUrl: './app.html',
   host: { '[class.standalone]': 'pwa.isStandalone()' },
 })

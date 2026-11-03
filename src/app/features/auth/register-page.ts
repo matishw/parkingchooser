@@ -1,10 +1,12 @@
 import { Component, inject, output, signal } from '@angular/core';
 import { AuthService } from '../../core/auth.service';
 import { NetworkService } from '../../core/network.service';
+import { TermsLink } from '../../shared/terms';
 import { PASSWORD_MIN_LENGTH, RegistrationErrors, RegistrationForm, validateRegistration } from './auth-validators';
 
 @Component({
   selector: 'app-register-page',
+  imports: [TermsLink],
   template: `
     <section class="login">
       <img src="icons/icon-192x192.png" width="72" height="72" alt="" class="login-logo" />
@@ -23,6 +25,7 @@ import { PASSWORD_MIN_LENGTH, RegistrationErrors, RegistrationForm, validateRegi
             @else if (f.hint) { <small class="muted">{{ f.hint }}</small> }
           </label>
         }
+        <p class="muted small terms-note">By creating an account you agree to the <app-terms-link />.</p>
         <button type="submit" class="btn btn-primary btn-block" [disabled]="busy() || !network.online()">
           {{ busy() ? 'Creating account…' : 'Create account' }}
         </button>

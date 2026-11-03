@@ -39,9 +39,13 @@ drop policy if exists "spaces readable" on public.parking_spaces;
 create policy "spaces readable" on public.parking_spaces
   for select to authenticated using (true);
 
+-- Everyone's bookings only around today (yesterday–tomorrow, since current_date is UTC and the app books
+-- for the device's local day); older/future ones only your own. Stops a signed-in user from pulling the
+-- whole history of who parked when. The full history stays in the table for the SQL editor.
 drop policy if exists "reservations readable" on public.reservations;
 create policy "reservations readable" on public.reservations
-  for select to authenticated using (true);
+  for select to authenticated
+  using (reserved_for between current_date - 1 and current_date + 1 or user_id = auth.uid());
 
 -- True when the space can be booked on that day: it is active and, if date-based, the day is in its range.
 create or replace function public.space_open_on(p_space_id smallint, p_day date)
