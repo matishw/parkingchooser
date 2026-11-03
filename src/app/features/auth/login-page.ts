@@ -10,7 +10,10 @@ import { TermsLink } from '../../shared/terms';
   imports: [InstallButton, TermsLink],
   template: `
     <section class="login">
-      <img src="icons/icon-192x192.png" width="88" height="88" alt="" class="login-logo" />
+      <div class="login-logos">
+        <img src="icons/icon-192x192.png" width="88" height="88" alt="" class="login-logo" />
+        <span class="login-logo login-logo-partner"><img src="ta9.svg" width="50" height="56" alt="TA9" /></span>
+      </div>
       <h1>Parking App</h1>
       <p class="muted">Reserve a shared parking space in one tap.</p>
 
