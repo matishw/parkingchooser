@@ -12,4 +12,6 @@ export const environment = {
    * Internal identifier only — no mail is ever sent there. Changing it breaks existing username logins.
    */
   usernameEmailDomain: 'users.parkingapp.com',
+  /** Web Push VAPID *public* key (`npx web-push generate-vapid-keys`). The private key lives only in Supabase secrets. */
+  vapidPublicKey: 'BPk4IRlA2xEiU4XT1MI0azVJ8tjDC9b3Dr8RrXtGOo5uX1AWiIOrAThtkwd8s8CUkB42YpEbFUy4G5Zlyt6ER48',
 };

@@ -98,6 +98,45 @@ before Angular finishes bootstrapping.
   re-fetches from Supabase. Every reserve/release is followed by an authoritative re-fetch, and the
   database's unique constraints resolve two people tapping the same space at once.
 
+## Push notifications — "parking is full"
+
+When the last free space of **today** is taken, everyone who opted in gets a notification. It arrives even
+when the app is in the background or closed. "Last free space" counts every space open that day:
+permanent spaces plus date-based spaces whose range includes today. The person who took the last space
+is not notified, and only one notification is sent per day (releasing and re-taking a space doesn't send
+a second one).
+
+How it works: the **Notify me** card (`src/app/shared/notify-toggle.ts`, `src/app/core/push.service.ts`)
+subscribes the device via Angular's `SwPush` and stores it in `push_subscriptions`. A Database Webhook on
+`reservations` INSERT calls the Edge Function `supabase/functions/notify-full`. The function checks
+`claim_full_notification()` in the database, which confirms the lot is full and claims the day atomically.
+It then sends Web Push to every subscribed device and removes subscriptions the browser has revoked.
+
+### Setup
+
+1. Re-run `supabase/schema.sql` (it adds `push_subscriptions`, `full_notifications` and the functions).
+2. VAPID keys (free, generated locally): `npx web-push generate-vapid-keys`. The **public** key goes in
+   `src/environments/environment.ts` → `vapidPublicKey`. The **private** key never goes in the repo.
+3. Store the keys as Edge Function secrets and deploy the function:
+   ```bash
+   supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... \
+     VAPID_SUBJECT=mailto:you@example.com APP_TIMEZONE=Asia/Jerusalem
+   supabase functions deploy notify-full
+   ```
+   `APP_TIMEZONE` decides what "today" means (default `Asia/Jerusalem`).
+4. Supabase → Database → Webhooks → **Create**: table `public.reservations`, event **Insert**,
+   type **Supabase Edge Functions** → `notify-full`, method POST, and enable
+   **"Add auth header with service key"**.
+
+### Platform notes
+
+- **Android / desktop Chrome, Edge, Firefox:** works in a tab or installed, including when the app is closed.
+- **iPhone / iPad:** iOS 16.4+ and **only from the Home Screen app**. In Safari the card shows
+  "add the app to your Home Screen first" and opens the install guide.
+- Permission is requested only when the user taps **Turn on** (browsers require a user gesture).
+- Signing out detaches the device from the account, so the next person on that device doesn't get alerts.
+- Push needs the production service worker: use `npm run build` + a local server, not `npm start`.
+
 ## Deployment (HTTPS required)
 
 Service workers and installation only work over **HTTPS** (or `localhost`). Configs are included for:

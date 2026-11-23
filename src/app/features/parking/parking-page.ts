@@ -7,10 +7,11 @@ import { AdminSpaces } from '../admin/admin-spaces';
 import { AdminDatedSpaces } from '../admin/admin-dated-spaces';
 import { Icon } from '../../shared/icons';
 import { TermsLink } from '../../shared/terms';
+import { NotifyToggle } from '../../shared/notify-toggle';
 
 @Component({
   selector: 'app-parking-page',
-  imports: [DatePipe, Icon, AdminSpaces, AdminDatedSpaces, TermsLink],
+  imports: [DatePipe, Icon, AdminSpaces, AdminDatedSpaces, TermsLink, NotifyToggle],
   template: `
     <section class="summary">
       <div class="summary-main">
@@ -73,6 +74,10 @@ import { TermsLink } from '../../shared/terms';
         <p><strong>Live availability unavailable</strong></p>
         <p class="muted">Parking spaces are only shown from the live server. They will refresh automatically when you reconnect.</p>
       </div>
+    }
+
+    @if (network.online()) {
+      <app-notify-toggle />
     }
 
     @if (parking.lastUpdated() && network.online()) {

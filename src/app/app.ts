@@ -1,6 +1,7 @@
 import { Component, DestroyRef, effect, inject, signal, untracked } from '@angular/core';
 import { AuthService } from './core/auth.service';
 import { PwaInstallService } from './core/pwa-install.service';
+import { PushService } from './core/push.service';
 import { LoginPage } from './features/auth/login-page';
 import { RegisterPage } from './features/auth/register-page';
 import { ParkingPage } from './features/parking/parking-page';
@@ -19,6 +20,7 @@ import { TermsSheet } from './shared/terms';
 export class App {
   protected readonly auth = inject(AuthService);
   protected readonly pwa = inject(PwaInstallService);
+  private readonly push = inject(PushService);
 
   /** Signed-out screen. Mirrored in location.hash (#register) so the browser/Android back button works. */
   protected readonly authView = signal<'login' | 'register'>(this.viewFromHash());
@@ -58,8 +60,11 @@ export class App {
     }
   }
 
-  confirmSignOut() {
-    if (confirm('Sign out of Parking App?')) this.auth.signOut();
+  async confirmSignOut() {
+    if (!confirm('Sign out of Parking App?')) return;
+    // Detach this device from the account first, so the next person here doesn't get this user's alerts.
+    await this.push.unlink().catch((e) => console.error('push unlink failed', e));
+    this.auth.signOut();
   }
 
   private viewFromHash() {

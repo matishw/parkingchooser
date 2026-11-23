@@ -392,3 +392,76 @@ revoke all on function public.daily_parking_reset() from public, anon, authentic
 -- Scheduling under an existing job name replaces that job, so re-running this doesn't create duplicates.
 create extension if not exists pg_cron with schema pg_catalog;
 select cron.schedule('daily-parking-reset', '0 20 * * *', 'select public.daily_parking_reset()');
+
+-- ============================================================================
+-- Push notifications: "the lot is full" (safe to re-run) — see supabase/functions/notify-full
+-- ============================================================================
+
+-- One row per device/browser. The endpoint identifies the device; if another user signs in on the same
+-- device the row is re-assigned to them (save_push_subscription), never duplicated.
+create table if not exists public.push_subscriptions (
+  endpoint    text primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  p256dh      text not null,
+  auth        text not null,
+  created_at  timestamptz not null default now()
+);
+alter table public.push_subscriptions enable row level security;
+
+drop policy if exists "read own subscriptions" on public.push_subscriptions;
+create policy "read own subscriptions" on public.push_subscriptions
+  for select to authenticated using (user_id = auth.uid());
+
+-- Writes go through these two functions so a device can move between accounts safely.
+create or replace function public.save_push_subscription(p_endpoint text, p_p256dh text, p_auth text)
+returns void language sql security definer set search_path = ''
+as $$
+  insert into public.push_subscriptions (endpoint, user_id, p256dh, auth)
+  values (p_endpoint, auth.uid(), p_p256dh, p_auth)
+  on conflict (endpoint) do update
+    set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth
+$$;
+
+create or replace function public.delete_push_subscription(p_endpoint text)
+returns void language sql security definer set search_path = ''
+as $$ delete from public.push_subscriptions where endpoint = p_endpoint and user_id = auth.uid() $$;
+
+revoke all on function public.save_push_subscription(text, text, text) from public, anon;
+revoke all on function public.delete_push_subscription(text) from public, anon;
+grant execute on function public.save_push_subscription(text, text, text) to authenticated;
+grant execute on function public.delete_push_subscription(text) to authenticated;
+
+-- Days that already got a "lot is full" notification, so it is sent at most once per day (even if a space
+-- is released and re-taken). Only the Edge Function (service role) touches it: RLS on, no policies.
+create table if not exists public.full_notifications (
+  reserved_for  date primary key,
+  sent_at       timestamptz not null default now()
+);
+alter table public.full_notifications enable row level security;
+
+-- Atomically: is p_date "today" in p_tz, is every space open that day (permanent + date-based in range)
+-- booked, and has nobody claimed it yet? Returns true for exactly one caller, which then sends the pushes.
+create or replace function public.claim_full_notification(p_date date, p_tz text)
+returns boolean language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_open int;
+  v_taken int;
+begin
+  if p_date <> (now() at time zone p_tz)::date then return false; end if;
+
+  select count(*) into v_open from public.parking_spaces s
+  where s.active and (s.available_from is null or p_date between s.available_from and s.available_until);
+
+  select count(*) into v_taken from public.reservations r
+  join public.parking_spaces s on s.id = r.space_id
+  where r.reserved_for = p_date
+    and s.active and (s.available_from is null or p_date between s.available_from and s.available_until);
+
+  if v_open = 0 or v_taken < v_open then return false; end if;
+
+  insert into public.full_notifications (reserved_for) values (p_date) on conflict do nothing;
+  return found;
+end $$;
+revoke all on function public.claim_full_notification(date, text) from public, anon, authenticated;
+grant execute on function public.claim_full_notification(date, text) to service_role;
