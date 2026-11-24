@@ -13,5 +13,6 @@ export const environment = {
    */
   usernameEmailDomain: 'users.parkingapp.com',
   /** Web Push VAPID *public* key (`npx web-push generate-vapid-keys`). The private key lives only in Supabase secrets. */
-  vapidPublicKey: 'BPk4IRlA2xEiU4XT1MI0azVJ8tjDC9b3Dr8RrXtGOo5uX1AWiIOrAThtkwd8s8CUkB42YpEbFUy4G5Zlyt6ER48',
+  vapidPublicKey:
+    'BMuxyfBA_hKP01fs9qYYgbHHratmrzpIyG6qcNXG7YQBnEFYggfQnLFPNfxygeLkKyHIbdNHcVl9Ci3jBHbYb2I',
 };

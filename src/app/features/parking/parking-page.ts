@@ -8,10 +8,11 @@ import { AdminDatedSpaces } from '../admin/admin-dated-spaces';
 import { Icon } from '../../shared/icons';
 import { TermsLink } from '../../shared/terms';
 import { NotifyToggle } from '../../shared/notify-toggle';
+import { PushTestButton } from '../../shared/push-test-button';
 
 @Component({
   selector: 'app-parking-page',
-  imports: [DatePipe, Icon, AdminSpaces, AdminDatedSpaces, TermsLink, NotifyToggle],
+  imports: [DatePipe, Icon, AdminSpaces, AdminDatedSpaces, TermsLink, NotifyToggle, PushTestButton],
   template: `
     <section class="summary">
       <div class="summary-main">
@@ -28,6 +29,8 @@ import { NotifyToggle } from '../../shared/notify-toggle';
         <span [class.spin]="parking.loading()"><app-icon name="refresh" /></span>
       </button>
     </section>
+
+    <app-push-test-button />
 
     @if (network.online() && parking.myReservation(); as mine) {
       <div class="mine-pill">

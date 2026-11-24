@@ -235,6 +235,14 @@ app-status-banners:has(.banner) + .topbar { padding-top: 8px; }
   .btn-outline { background: transparent; color: var(--ink); border: 1px solid var(--line); }
 }
 
+.push-test-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.push-test-result { margin: 8px 2px 0; overflow-wrap: anywhere; }
+.push-test-diag {
+  margin: 8px 2px 0;
+  summary { cursor: pointer; }
+  ul { margin: 6px 0 0; padding-left: 18px; }
+}
+
 .offline-card {
   display: grid; justify-items: center; gap: 4px; margin-top: 24px; padding: 28px 20px;
   border: 2px dashed var(--line); border-radius: var(--radius); text-align: center; color: var(--muted);
