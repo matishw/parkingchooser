@@ -50,7 +50,6 @@ export class PushService {
     // Re-link this device to whoever is signed in (also refreshes rotated keys).
     effect(() => {
       const sub = this.subscription();
-      debugger
       const user = this.auth.user();
       if (sub && user) untracked(() => this.save(sub).catch((e) => console.error('push save failed', e)));
     });
@@ -63,7 +62,6 @@ export class PushService {
     try {
       // Must run from a user gesture (required by iOS and Chrome's permission UI).
       const sub = await this.subscribeWithAppKey();
-      debugger
       await this.save(sub);
     } catch (e) {
       console.error(e);
